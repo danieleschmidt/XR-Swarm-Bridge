@@ -300,7 +300,7 @@ If you use XR-Swarm-Bridge in research, please cite:
 ```bibtex
 @inproceedings{xr-swarm-bridge2025,
   title={XR-Swarm-Bridge: Scaling Human-Robot Teaming to 100+ Agents via Immersive Telepresence},
-  author={Your Name and Collaborators},
+  author={Daniel Schmidt},
   booktitle={ACM MobiSys},
   year={2025}
 }
