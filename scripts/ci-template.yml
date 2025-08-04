@@ -1,3 +1,15 @@
+# GitHub Actions CI/CD Template for XR-Swarm-Bridge
+# 
+# This file contains the complete CI/CD workflow configuration.
+# To use it, copy this content to .github/workflows/ci.yml
+# 
+# Note: Requires the following repository permissions:
+# - Actions: Read and write
+# - Contents: Read and write  
+# - Packages: Write
+# - Security events: Write
+# - Workflows: Write (for creating/updating this file)
+
 name: XR-Swarm-Bridge CI/CD
 
 on:
