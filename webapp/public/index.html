@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- XR and VR Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- WebXR Polyfill -->
+    <script src="https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.min.js"></script>
+    
+    <title>XR-Swarm-Bridge</title>
+    
+    <!-- Preload critical resources -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- CSS Variables for theming -->
+    <style>
+      :root {
+        --background: 220 10% 3%;
+        --foreground: 220 10% 98%;
+        --card: 220 10% 4%;
+        --card-foreground: 220 10% 98%;
+        --popover: 220 10% 4%;
+        --popover-foreground: 220 10% 98%;
+        --primary: 217 91% 60%;
+        --primary-foreground: 220 10% 98%;
+        --secondary: 220 10% 10%;
+        --secondary-foreground: 220 10% 98%;
+        --muted: 220 10% 10%;
+        --muted-foreground: 220 10% 40%;
+        --accent: 220 10% 10%;
+        --accent-foreground: 220 10% 98%;
+        --destructive: 0 63% 31%;
+        --destructive-foreground: 220 10% 98%;
+        --border: 220 13% 18%;
+        --input: 220 13% 18%;
+        --ring: 217 91% 60%;
+        --radius: 0.5rem;
+      }
+      
+      /* Loading screen styles */
+      #loading-screen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        transition: opacity 0.5s ease-out;
+      }
+      
+      #loading-screen.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      
+      .loading-content {
+        text-align: center;
+        color: white;
+      }
+      
+      .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #333;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      /* Prevent zoom on double tap (iOS Safari) */
+      * {
+        touch-action: manipulation;
+      }
+      
+      /* Full height for app */
+      html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading Screen -->
+    <div id="loading-screen">
+      <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <h2>XR-Swarm-Bridge</h2>
+        <p>Loading immersive robot control system...</p>
+      </div>
+    </div>
+    
+    <!-- Main App -->
+    <div id="root"></div>
+    
+    <!-- Hide loading screen once app loads -->
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const loadingScreen = document.getElementById('loading-screen');
+          if (loadingScreen) {
+            loadingScreen.classList.add('hidden');
+            setTimeout(() => {
+              loadingScreen.remove();
+            }, 500);
+          }
+        }, 1000);
+      });
+    </script>
+    
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
