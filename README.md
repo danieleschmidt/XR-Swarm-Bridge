@@ -47,7 +47,7 @@ XR-Swarm-Bridge enables **real-time control of 100+ robots through immersive VR/
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/xr-swarm-bridge.git
+git clone https://github.com/danieleschmidt/xr-swarm-bridge.git
 cd xr-swarm-bridge
 
 # Install ROS 2 dependencies
