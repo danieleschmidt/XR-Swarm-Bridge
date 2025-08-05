@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 from threading import Thread
 import signal
+from cv_bridge import CvBridge
 
 # Try to import aiortc for WebRTC support
 try:
@@ -59,6 +60,9 @@ class WebRTCBridge(Node):
         # Media relay for efficient streaming
         if WEBRTC_AVAILABLE:
             self.media_relay = MediaRelay()
+        
+        # Initialize CV bridge for image conversion
+        self.bridge = CvBridge()
         
         self.get_logger().info("WebRTC Bridge initialized")
     

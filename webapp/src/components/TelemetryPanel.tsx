@@ -1,9 +1,10 @@
+```tsx
 import React, { useState, useEffect } from 'react'
 import { useSwarmStore, useSelectedAgents } from '../store/swarmStore'
 
 export default function TelemetryPanel() {
   const selectedAgents = useSelectedAgents()
-  const { latency, packetLoss, bandwidth } = useSwarmStore()
+  const { latency, packetLoss, bandwidth, webrtcStats } = useSwarmStore()
   const [selectedAgentId, setSelectedAgentId] = useState<string>('')
   const [telemetryHistory, setTelemetryHistory] = useState<any[]>([])
 
@@ -51,6 +52,9 @@ export default function TelemetryPanel() {
       </div>
     )
   }
+
+  // Use webrtcStats if available, otherwise fall back to individual values
+  const networkStats = webrtcStats || { latency, packetLoss, bandwidth }
 
   return (
     <div className="bg-black/80 backdrop-blur-sm border border-gray-700 rounded-lg h-full flex flex-col">
@@ -124,6 +128,18 @@ export default function TelemetryPanel() {
                     <div className="font-mono text-white">
                       {selectedAgent.telemetry.velocity.map((v: number) => v.toFixed(2)).join(', ')} m/s
                     </div>
+                  </div>
+                )}
+                {selectedAgent.telemetry?.altitude !== undefined && (
+                  <div>
+                    <span className="text-gray-400">Altitude:</span>
+                    <span className="ml-2 font-mono text-white">{selectedAgent.telemetry.altitude.toFixed(1)}m</span>
+                  </div>
+                )}
+                {selectedAgent.telemetry?.waypoints_remaining !== undefined && (
+                  <div>
+                    <span className="text-gray-400">Waypoints:</span>
+                    <span className="ml-2 font-mono text-white">{selectedAgent.telemetry.waypoints_remaining}</span>
                   </div>
                 )}
               </div>
@@ -213,20 +229,20 @@ export default function TelemetryPanel() {
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400">Latency:</span>
-                  <span className={latency > 200 ? 'text-red-400' : latency > 100 ? 'text-yellow-400' : 'text-green-400'}>
-                    {latency}ms
+                  <span className={networkStats.latency > 200 ? 'text-red-400' : networkStats.latency > 100 ? 'text-yellow-400' : 'text-green-400'}>
+                    {Math.round(networkStats.latency || 0)}ms
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400">Packet Loss:</span>
-                  <span className={packetLoss > 0.05 ? 'text-red-400' : 'text-green-400'}>
-                    {(packetLoss * 100).toFixed(1)}%
+                  <span className={networkStats.packetLoss > 0.05 ? 'text-red-400' : 'text-green-400'}>
+                    {(networkStats.packetLoss * 100).toFixed(1)}%
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-gray-400">Bandwidth:</span>
                   <span className="text-blue-400">
-                    {(bandwidth / 1000).toFixed(1)} Mbps
+                    {(networkStats.bandwidth / 1000).toFixed(1)} Mbps
                   </span>
                 </div>
               </div>
@@ -283,3 +299,4 @@ function getBatteryColor(battery: number): string {
   if (battery > 30) return 'text-yellow-400'
   return 'text-red-400'
 }
+```

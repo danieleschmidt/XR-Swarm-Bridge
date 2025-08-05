@@ -1,3 +1,4 @@
+```tsx
 import React, { useState } from 'react'
 import { useSwarmStore, useActiveAgents, useSelectedAgents } from '../store/swarmStore'
 import { useSwarmConnection } from '../hooks/useSwarmConnection'
@@ -233,3 +234,4 @@ export default function RobotPanel() {
     </div>
   )
 }
+```
