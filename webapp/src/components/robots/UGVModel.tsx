@@ -1,3 +1,4 @@
+```typescript
 import React, { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useSwarmStore } from '../../store/swarmStore'
@@ -15,12 +16,16 @@ export default function UGVModel({ agent, isSelected }: UGVModelProps) {
   const wheelRefs = useRef<THREE.Mesh[]>([])
   const { selectAgent, deselectAgent } = useSwarmStore()
 
-  // Animate wheels when moving
+  // Animate wheels based on movement
   useFrame((state, delta) => {
     if (wheelRefs.current && agent.status === 'active') {
+      const speed = agent.velocity ? Math.sqrt(
+        agent.velocity[0]**2 + agent.velocity[1]**2 + agent.velocity[2]**2
+      ) : 1
+      
       wheelRefs.current.forEach(wheel => {
         if (wheel) {
-          wheel.rotation.x += delta * 5 // Wheel rotation
+          wheel.rotation.x += delta * speed * 10
         }
       })
     }
@@ -47,9 +52,14 @@ export default function UGVModel({ agent, isSelected }: UGVModelProps) {
   }
 
   const getBatteryColor = () => {
-    if (agent.battery > 60) return '#00ff00'
-    if (agent.battery > 30) return '#ffff00'
+    const batteryLevel = agent.battery || agent.battery_level || 100
+    if (batteryLevel > 60) return '#00ff00'
+    if (batteryLevel > 30) return '#ffff00'
     return '#ff0000'
+  }
+
+  const getBatteryLevel = () => {
+    return agent.battery || agent.battery_level || 100
   }
 
   return (
@@ -151,7 +161,7 @@ export default function UGVModel({ agent, isSelected }: UGVModelProps) {
         anchorY="middle"
         font="/fonts/inter-medium.woff"
       >
-        {Math.round(agent.battery)}%
+        {Math.round(getBatteryLevel())}%
       </Text>
 
       {/* Selection indicator */}
@@ -193,3 +203,4 @@ export default function UGVModel({ agent, isSelected }: UGVModelProps) {
     </group>
   )
 }
+```

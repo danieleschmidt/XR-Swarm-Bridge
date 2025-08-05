@@ -1,3 +1,4 @@
+```tsx
 import React from 'react'
 import * as THREE from 'three'
 
@@ -11,6 +12,9 @@ export default function GroundPlane() {
           color="#2a2a2a" 
           roughness={0.8}
           metalness={0.1}
+          transparent
+          opacity={0.8}
+          side={THREE.DoubleSide}
         />
       </mesh>
 
@@ -132,3 +136,4 @@ export default function GroundPlane() {
     </group>
   )
 }
+```

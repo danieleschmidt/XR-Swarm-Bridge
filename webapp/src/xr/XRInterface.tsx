@@ -1,8 +1,13 @@
+```tsx
 import React, { useRef } from 'react'
 import { useXR, useController, useHitTest, Interactive } from '@react-three/xr'
+import { useFrame } from '@react-three/fiber'
 import { useSwarmStore, useSelectedAgents } from '../store/swarmStore'
 import { useSwarmConnection } from '../hooks/useSwarmConnection'
 import { Text } from '@react-three/drei'
+import XRControlPanel from './XRControlPanel'
+import XRGestureHandler from './XRGestureHandler'
+import XRMiniMap from './XRMiniMap'
 import * as THREE from 'three'
 
 export default function XRInterface() {
@@ -16,9 +21,18 @@ export default function XRInterface() {
   // XR-specific UI panels
   const leftPanelRef = useRef<THREE.Group>(null)
   const rightPanelRef = useRef<THREE.Group>(null)
+  const controllerRef = useRef<THREE.Group>(null)
 
   // Hit test for placing waypoints
   const hitTestResults = useHitTest()
+
+  // Handle controller input for agent selection and commands
+  useFrame(() => {
+    if (!isPresenting || !controllerRef.current) return
+    
+    // Controller-based interaction logic would go here
+    // For now, we'll use simplified hand tracking simulation
+  })
 
   if (!isPresenting) return null
 
@@ -260,22 +274,41 @@ export default function XRInterface() {
         </group>
       )}
 
-      {/* Hand tracking gestures */}
-      <XRHandGestureHandler />
+      {/* XR Control Panel - floating interface */}
+      <group position={[-2, 1.5, -1]} rotation={[0, Math.PI/4, 0]}>
+        <XRControlPanel />
+      </group>
+      
+      {/* Mini-map in XR space */}
+      <group position={[2, 1.5, -1]} rotation={[0, -Math.PI/4, 0]}>
+        <XRMiniMap />
+      </group>
+      
+      {/* Gesture handler for hand tracking */}
+      <XRGestureHandler />
 
       {/* Spatial waypoint placement */}
       <WaypointPlacer hitTestResults={hitTestResults} />
 
-      {/* 3D minimap in XR space */}
-      <XRMinimap />
+      {/* Interactive waypoint placement */}
+      <InteractiveSpace />
+      
+      {/* Agent information displays in 3D space */}
+      {selectedAgents.map(agent => {
+        const agentData = agents[agent.id]
+        if (!agentData) return null
+        
+        return (
+          <group 
+            key={agent.id} 
+            position={[agentData.position[0], agentData.position[1] + 1, agentData.position[2]]}
+          >
+            <AgentInfoPanel agent={agentData} />
+          </group>
+        )
+      })}
     </group>
   )
-}
-
-function XRHandGestureHandler() {
-  // Placeholder for hand gesture recognition
-  // In a real implementation, this would use WebXR hand tracking APIs
-  return null
 }
 
 function WaypointPlacer({ hitTestResults }: { hitTestResults: any[] }) {
@@ -312,49 +345,83 @@ function WaypointPlacer({ hitTestResults }: { hitTestResults: any[] }) {
   )
 }
 
-function XRMinimap() {
-  const agents = useSwarmStore(state => state.agents)
-  
+function InteractiveSpace() {
+  const { isPresenting } = useXR()
+  const planeRef = useRef<THREE.Mesh>(null)
+
+  const handleSelect = (event: any) => {
+    const intersection = event.intersection
+    if (intersection) {
+      // Place waypoint at selected position
+      useSwarmStore.getState().addWaypoint(intersection.point.toArray())
+    }
+  }
+
+  if (!isPresenting) return null
+
   return (
-    <group position={[2, 1, -1]}>
-      {/* Minimap background */}
-      <mesh>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial 
-          color="#000000" 
-          transparent 
-          opacity={0.8}
-        />
+    <Interactive onSelect={handleSelect}>
+      <mesh ref={planeRef} rotation={[-Math.PI/2, 0, 0]} position={[0, 0, 0]}>
+        <planeGeometry args={[100, 100]} />
+        <meshBasicMaterial transparent opacity={0} />
       </mesh>
+    </Interactive>
+  )
+}
 
-      {/* Agent positions on minimap */}
-      {Object.values(agents).map(agent => (
-        <mesh
-          key={agent.id}
-          position={[
-            agent.position[0] * 0.01, // Scale down for minimap
-            agent.position[2] * 0.01,
-            0.01
-          ]}
-        >
-          <sphereGeometry args={[0.02]} />
-          <meshBasicMaterial 
-            color={agent.status === 'active' ? '#00ff00' : '#666666'}
-          />
-        </mesh>
-      ))}
-
-      {/* Minimap title */}
+function AgentInfoPanel({ agent }: { agent: any }) {
+  return (
+    <group>
+      {/* Info background */}
+      <mesh>
+        <planeGeometry args={[1, 0.6]} />
+        <meshBasicMaterial color="#000000" transparent opacity={0.8} />
+      </mesh>
+      
+      {/* Status indicator */}
+      <mesh position={[0, 0.2, 0.01]}>
+        <circleGeometry args={[0.05, 16]} />
+        <meshBasicMaterial color={getStatusColor(agent.status)} />
+      </mesh>
+      
+      {/* Battery indicator */}
+      <mesh position={[0, 0, 0.01]}>
+        <planeGeometry args={[0.6, 0.1]} />
+        <meshBasicMaterial color="#333333" />
+      </mesh>
+      <mesh position={[-0.3 + (agent.battery_level / 100) * 0.3, 0, 0.02]}>
+        <planeGeometry args={[(agent.battery_level / 100) * 0.6, 0.08]} />
+        <meshBasicMaterial color={getBatteryColor(agent.battery_level)} />
+      </mesh>
+      
+      {/* Agent ID text */}
       <Text
-        position={[0, 0.6, 0.01]}
-        fontSize={0.05}
+        position={[0, -0.2, 0.01]}
+        fontSize={0.03}
         color="#ffffff"
         anchorX="center"
         anchorY="middle"
         font="/fonts/inter-medium.woff"
       >
-        MINIMAP
+        {agent.id}
       </Text>
     </group>
   )
 }
+
+function getStatusColor(status: string): string {
+  switch (status) {
+    case 'active': return '#00ff00'
+    case 'idle': return '#0066ff'
+    case 'error': return '#ff0000'
+    case 'emergency_stop': return '#ff6600'
+    default: return '#999999'
+  }
+}
+
+function getBatteryColor(level: number): string {
+  if (level > 60) return '#00ff00'
+  if (level > 30) return '#ffff00'
+  return '#ff0000'
+}
+```

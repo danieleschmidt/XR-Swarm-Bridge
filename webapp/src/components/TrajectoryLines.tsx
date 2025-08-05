@@ -1,3 +1,4 @@
+```typescript
 import React, { useMemo } from 'react'
 import { useSwarmStore, useSelectedAgents } from '../store/swarmStore'
 import { Line } from '@react-three/drei'
@@ -5,7 +6,10 @@ import * as THREE from 'three'
 
 export default function TrajectoryLines() {
   const selectedAgents = useSelectedAgents()
-  const agents = useSwarmStore(state => state.agents)
+  const { agents, trajectories } = useSwarmStore(state => ({
+    agents: state.agents,
+    trajectories: state.trajectories
+  }))
 
   // Generate trajectory paths for selected agents
   const trajectoryPaths = useMemo(() => {
@@ -13,6 +17,17 @@ export default function TrajectoryLines() {
       const telemetry = agent.telemetry
       const waypoints = telemetry?.waypoints || []
       const currentPosition = agent.position
+      const trajectory = trajectories[agent.id]
+      
+      // If we have trajectory data, use it
+      if (trajectory && trajectory.length >= 2) {
+        return {
+          agentId: agent.id,
+          points: trajectory,
+          color: getAgentColor(agent.id),
+          type: 'trajectory'
+        }
+      }
       
       // If no waypoints, create a simple predicted path
       if (waypoints.length === 0) {
@@ -44,7 +59,7 @@ export default function TrajectoryLines() {
         type: 'planned'
       }
     })
-  }, [selectedAgents])
+  }, [selectedAgents, trajectories])
 
   // Historical trajectory paths (last N positions)
   const historicalPaths = useMemo(() => {
@@ -70,7 +85,7 @@ export default function TrajectoryLines() {
           key={`future-${path.agentId}`}
           points={path.points}
           color={path.color}
-          lineWidth={path.type === 'planned' ? 3 : 2}
+          lineWidth={path.type === 'planned' || path.type === 'trajectory' ? 3 : 2}
           dashed={path.type === 'predicted'}
           dashScale={50}
           dashSize={1}
@@ -176,3 +191,4 @@ function calculatePathDistance(points: number[][]): number {
   }
   return distance
 }
+```

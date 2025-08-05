@@ -1,3 +1,4 @@
+```typescript
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useSwarmStore } from '../store/swarmStore'
 
@@ -5,6 +6,13 @@ interface WebRTCConnection {
   peerConnection: RTCPeerConnection
   dataChannel: RTCDataChannel | null
   remoteStream: MediaStream | null
+}
+
+interface WebRTCStats {
+  latency: number
+  packetLoss: number
+  bandwidth: number
+  connectionState: RTCPeerConnectionState
 }
 
 export function useWebRTC() {
@@ -15,8 +23,9 @@ export function useWebRTC() {
   const connections = useRef<Map<string, WebRTCConnection>>(new Map())
   const localStreamRef = useRef<MediaStream | null>(null)
   const websocketRef = useRef<WebSocket | null>(null)
+  const statsInterval = useRef<NodeJS.Timeout | null>(null)
   
-  const { websocketUrl, updateNetworkMetrics, setConnection } = useSwarmStore()
+  const { websocketUrl, updateNetworkMetrics, setConnection, setWebRTCStats, setConnectionStatus, setSendCommand } = useSwarmStore()
 
   const initializeWebSocket = useCallback(() => {
     if (!isWebRTCSupported) {
@@ -30,6 +39,7 @@ export function useWebRTC() {
 
     ws.onopen = () => {
       console.log('WebRTC signaling WebSocket connected')
+      setConnectionStatus('websocket_connected')
     }
 
     ws.onmessage = async (event) => {
@@ -43,14 +53,16 @@ export function useWebRTC() {
 
     ws.onclose = () => {
       console.log('WebRTC signaling WebSocket disconnected')
+      setConnectionStatus('disconnected')
       // Attempt reconnection after delay
       setTimeout(initializeWebSocket, 5000)
     }
 
     ws.onerror = (error) => {
       console.error('WebRTC signaling WebSocket error:', error)
+      setConnectionStatus('error')
     }
-  }, [websocketUrl, isWebRTCSupported])
+  }, [websocketUrl, isWebRTCSupported, setConnectionStatus])
 
   const createPeerConnection = useCallback((agentId: string): RTCPeerConnection => {
     const configuration: RTCConfiguration = {
@@ -80,10 +92,13 @@ export function useWebRTC() {
       console.log(`WebRTC connection state for ${agentId}:`, state)
       
       if (state === 'connected') {
+        setConnectionStatus('webrtc_connected')
         // Start measuring latency
         measureLatency(agentId)
+        startStatsCollection(agentId)
       } else if (state === 'disconnected' || state === 'failed') {
         connections.current.delete(agentId)
+        setConnectionStatus('disconnected')
       }
     }
 
@@ -108,11 +123,12 @@ export function useWebRTC() {
     }
 
     return peerConnection
-  }, [])
+  }, [setConnectionStatus])
 
   const setupDataChannel = (dataChannel: RTCDataChannel, agentId: string) => {
     dataChannel.onopen = () => {
       console.log(`Data channel opened for ${agentId}`)
+      setConnectionStatus('webrtc_connected')
     }
 
     dataChannel.onmessage = (event) => {
@@ -126,6 +142,7 @@ export function useWebRTC() {
 
     dataChannel.onclose = () => {
       console.log(`Data channel closed for ${agentId}`)
+      setConnectionStatus('websocket_connected')
     }
 
     dataChannel.onerror = (error) => {
@@ -134,25 +151,45 @@ export function useWebRTC() {
   }
 
   const handleDataChannelMessage = (agentId: string, data: any) => {
-    if (data.type === 'telemetry') {
-      // Update agent telemetry with low-latency data
-      const { pos, bat, stat } = data
-      if (pos && bat !== undefined && stat) {
-        useSwarmStore.getState().updateAgent({
-          id: agentId,
-          type: 'generic',
-          position: [pos.x || 0, pos.y || 0, pos.z || 0],
-          rotation: [0, 0, 0],
-          status: stat,
-          battery: bat,
-          capabilities: [],
-          telemetry: data,
-          lastSeen: Date.now()
-        })
-      }
-    } else if (data.type === 'video_frame') {
-      // Handle compressed video frames
-      handleVideoFrame(agentId, data)
+    switch (data.type) {
+      case 'telemetry':
+      case 'agent_telemetry':
+        // Update agent telemetry with low-latency data
+        const { pos, bat, stat } = data
+        if (pos && bat !== undefined && stat) {
+          useSwarmStore.getState().updateAgent({
+            id: agentId,
+            type: 'generic',
+            position: [pos.x || 0, pos.y || 0, pos.z || 0],
+            rotation: [0, 0, 0],
+            status: stat,
+            battery: bat,
+            capabilities: [],
+            telemetry: data,
+            lastSeen: Date.now()
+          })
+        }
+        if (data.data) {
+          useSwarmStore.getState().updateAgentTelemetry(data.data)
+        }
+        break
+      
+      case 'video_frame':
+        // Handle compressed video frames
+        handleVideoFrame(agentId, data)
+        if (data.data) {
+          useSwarmStore.getState().updateAgentVideo(agentId, data.data)
+        }
+        break
+      
+      case 'heartbeat':
+        // Update agent heartbeat
+        useSwarmStore.getState().updateAgentHeartbeat(agentId, data.timestamp)
+        break
+      
+      case 'pong':
+        // Handled in measureLatency
+        break
     }
   }
 
@@ -163,17 +200,22 @@ export function useWebRTC() {
   }
 
   const handleSignalingMessage = async (message: any) => {
-    const { type, agentId } = message
+    const { type, agentId, agent_id } = message
+    const effectiveAgentId = agentId || agent_id
 
     switch (type) {
       case 'webrtc_offer':
-        await handleOffer(agentId, message)
+        await handleOffer(effectiveAgentId, message)
         break
       case 'webrtc_answer':
-        await handleAnswer(agentId, message)
+        await handleAnswer(effectiveAgentId, message)
         break
       case 'ice_candidate':
-        await handleIceCandidate(agentId, message)
+        await handleIceCandidate(effectiveAgentId, message)
+        break
+      case 'agent_telemetry':
+        // Handle incoming telemetry data
+        useSwarmStore.getState().updateAgentTelemetry(message.data)
         break
       case 'error':
         console.error('WebRTC signaling error:', message.message)
@@ -259,7 +301,7 @@ export function useWebRTC() {
     }
     
     // Fallback to WebSocket
-    if (websocketRef.current) {
+    if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
       websocketRef.current.send(JSON.stringify({
         type: 'agent_command',
         agent_id: agentId,
@@ -270,6 +312,37 @@ export function useWebRTC() {
     
     return null
   }, [sendDataChannelMessage])
+
+  const sendCommand = useCallback((command: any) => {
+    // If command has agent_id, send to specific agent
+    if (command.agent_id) {
+      return sendLowLatencyCommand(command.agent_id, command)
+    }
+    
+    // Otherwise broadcast to all connected agents
+    let sent = false
+    connections.current.forEach((connection, agentId) => {
+      if (sendDataChannelMessage(agentId, {
+        type: 'command',
+        ...command,
+        timestamp: Date.now()
+      })) {
+        sent = true
+      }
+    })
+    
+    // Fallback to WebSocket broadcast
+    if (!sent && websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+      websocketRef.current.send(JSON.stringify({
+        type: 'swarm_command',
+        ...command,
+        timestamp: Date.now()
+      }))
+      return 'websocket'
+    }
+    
+    return sent ? 'webrtc' : null
+  }, [sendDataChannelMessage, sendLowLatencyCommand])
 
   const measureLatency = useCallback((agentId: string) => {
     const startTime = Date.now()
@@ -306,6 +379,82 @@ export function useWebRTC() {
     }
   }, [sendDataChannelMessage, updateNetworkMetrics])
 
+  const parseRTCStats = (stats: RTCStatsReport): WebRTCStats => {
+    let latency = 0
+    let packetLoss = 0
+    let bandwidth = 0
+    let connectionState: RTCPeerConnectionState = 'new'
+    
+    stats.forEach((report) => {
+      if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+        latency = report.currentRoundTripTime ? report.currentRoundTripTime * 1000 : 0
+        bandwidth = report.availableIncomingBitrate || 0
+      }
+      
+      if (report.type === 'inbound-rtp') {
+        const packetsLost = report.packetsLost || 0
+        const packetsReceived = report.packetsReceived || 0
+        const totalPackets = packetsLost + packetsReceived
+        packetLoss = totalPackets > 0 ? packetsLost / totalPackets : 0
+      }
+      
+      if (report.type === 'data-channel') {
+        // Additional data channel stats if needed
+      }
+      
+      if (report.type === 'transport') {
+        // Additional transport stats if needed
+      }
+    })
+    
+    return {
+      latency,
+      packetLoss,
+      bandwidth,
+      connectionState
+    }
+  }
+
+  const startStatsCollection = (agentId: string) => {
+    const connection = connections.current.get(agentId)
+    if (!connection) return
+    
+    const collectStats = async () => {
+      if (!connection.peerConnection) return
+      
+      try {
+        const stats = await connection.peerConnection.getStats()
+        const webrtcStats = parseRTCStats(stats)
+        webrtcStats.connectionState = connection.peerConnection.connectionState
+        setWebRTCStats(webrtcStats)
+      } catch (error) {
+        console.error(`Error collecting WebRTC stats for ${agentId}:`, error)
+      }
+    }
+    
+    // Initial collection
+    collectStats()
+    
+    // Set up periodic collection
+    if (!statsInterval.current) {
+      statsInterval.current = setInterval(async () => {
+        // Collect stats for all connections
+        for (const [agentId, connection] of connections.current) {
+          if (connection.peerConnection) {
+            try {
+              const stats = await connection.peerConnection.getStats()
+              const webrtcStats = parseRTCStats(stats)
+              webrtcStats.connectionState = connection.peerConnection.connectionState
+              setWebRTCStats(webrtcStats)
+            } catch (error) {
+              console.error(`Error collecting stats for ${agentId}:`, error)
+            }
+          }
+        }
+      }, 1000)
+    }
+  }
+
   const getConnectionStats = useCallback(async () => {
     const stats = {
       totalConnections: connections.current.size,
@@ -338,23 +487,33 @@ export function useWebRTC() {
     return stats
   }, [])
 
+  const cleanup = useCallback(() => {
+    if (statsInterval.current) {
+      clearInterval(statsInterval.current)
+      statsInterval.current = null
+    }
+    
+    // Close all peer connections
+    connections.current.forEach(connection => {
+      connection.dataChannel?.close()
+      connection.peerConnection.close()
+    })
+    connections.current.clear()
+    
+    if (websocketRef.current) {
+      websocketRef.current.close()
+      websocketRef.current = null
+    }
+  }, [])
+
   // Initialize WebSocket connection
   useEffect(() => {
     initializeWebSocket()
     
     return () => {
-      if (websocketRef.current) {
-        websocketRef.current.close()
-      }
-      
-      // Close all peer connections
-      connections.current.forEach(connection => {
-        connection.peerConnection.close()
-        connection.dataChannel?.close()
-      })
-      connections.current.clear()
+      cleanup()
     }
-  }, [initializeWebSocket])
+  }, [initializeWebSocket, cleanup])
 
   // Periodic stats collection
   useEffect(() => {
@@ -371,10 +530,20 @@ export function useWebRTC() {
     return () => clearInterval(interval)
   }, [getConnectionStats, updateNetworkMetrics, isWebRTCSupported])
 
+  // Expose sendCommand for use by other components
+  useEffect(() => {
+    setSendCommand(sendCommand)
+  }, [sendCommand, setSendCommand])
+
   return {
     isWebRTCSupported,
     sendLowLatencyCommand,
+    sendCommand,
     getConnectionStats,
-    activeConnections: connections.current.size
+    activeConnections: connections.current.size,
+    isConnected: Array.from(connections.current.values()).some(
+      conn => conn.dataChannel?.readyState === 'open'
+    ) || websocketRef.current?.readyState === WebSocket.OPEN
   }
 }
+```

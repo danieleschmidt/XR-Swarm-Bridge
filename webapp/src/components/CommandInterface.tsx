@@ -1,7 +1,8 @@
+```typescript
 import React, { useState, useRef, useEffect } from 'react'
 import { useGPTIntegration } from '../ai/gptIntegration'
 import { useSwarmConnection } from '../hooks/useSwarmConnection'
-import { useSelectedAgents } from '../store/swarmStore'
+import { useSelectedAgents, useSwarmStore } from '../store/swarmStore'
 
 export default function CommandInterface() {
   const [isVisible, setIsVisible] = useState(false)
@@ -14,6 +15,7 @@ export default function CommandInterface() {
   const selectedAgents = useSelectedAgents()
   const { generateCommands, isLoading } = useGPTIntegration()
   const { sendGlobalCommand, sendAgentCommand } = useSwarmConnection()
+  const { isConnected, sendCommand } = useSwarmStore()
 
   // Toggle visibility with keyboard shortcut
   useEffect(() => {
@@ -50,6 +52,27 @@ export default function CommandInterface() {
     }
   }
 
+  const parseSimpleCommand = (commandText: string) => {
+    const parts = commandText.toLowerCase().trim().split(' ')
+    const cmd = parts[0]
+    
+    switch (cmd) {
+      case 'takeoff':
+        return { type: 'takeoff', params: { altitude: parseFloat(parts[1]) || 5.0 } }
+      case 'land':
+        return { type: 'land', params: {} }
+      case 'hover':
+        return { type: 'hover', params: {} }
+      case 'stop':
+        return { type: 'emergency_stop', params: {} }
+      case 'rtb':
+      case 'return':
+        return { type: 'return_to_base', params: {} }
+      default:
+        return null
+    }
+  }
+
   const handleSubmit = async () => {
     if (!command.trim() || isLoading) return
 
@@ -58,25 +81,31 @@ export default function CommandInterface() {
     setCommandHistory(newHistory)
     setHistoryIndex(-1)
 
-    // Process command
-    const result = await generateCommands(command, {
-      agents: selectedAgents
-    })
-
-    if (result.commands) {
-      result.commands.forEach(cmd => {
-        if (cmd.target === 'all') {
-          sendGlobalCommand(cmd.parameters)
-        } else if (Array.isArray(cmd.target)) {
-          cmd.target.forEach(agentId => {
-            sendAgentCommand(agentId, cmd.parameters)
-          })
-        } else if (cmd.target === 'selected' && selectedAgents.length > 0) {
-          selectedAgents.forEach(agent => {
-            sendAgentCommand(agent.id, cmd.parameters)
-          })
-        }
+    // First try to parse as simple command
+    const simpleCmd = parseSimpleCommand(command)
+    if (simpleCmd) {
+      sendCommand(simpleCmd.type, simpleCmd.params)
+    } else {
+      // Process with AI for complex commands
+      const result = await generateCommands(command, {
+        agents: selectedAgents
       })
+
+      if (result.commands) {
+        result.commands.forEach(cmd => {
+          if (cmd.target === 'all') {
+            sendGlobalCommand(cmd.parameters)
+          } else if (Array.isArray(cmd.target)) {
+            cmd.target.forEach(agentId => {
+              sendAgentCommand(agentId, cmd.parameters)
+            })
+          } else if (cmd.target === 'selected' && selectedAgents.length > 0) {
+            selectedAgents.forEach(agent => {
+              sendAgentCommand(agent.id, cmd.parameters)
+            })
+          }
+        })
+      }
     }
 
     setCommand('')
@@ -135,6 +164,8 @@ export default function CommandInterface() {
           <span className="ml-2 text-xs text-gray-400">/</span>
         </button>
         
+        <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+        
         {selectedAgents.length > 0 && (
           <div className="px-2 py-1 bg-blue-600/80 backdrop-blur-sm rounded text-xs text-white">
             {selectedAgents.length} selected
@@ -150,6 +181,7 @@ export default function CommandInterface() {
         <h4 className="text-sm font-medium text-white flex items-center">
           <span className="mr-2">🤖</span>
           AI Command Interface
+          <div className={`ml-2 w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
         </h4>
         <button
           onClick={() => setIsVisible(false)}
@@ -178,13 +210,13 @@ export default function CommandInterface() {
             onKeyDown={handleKeyDown}
             placeholder="Enter natural language command..."
             className="flex-1 px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-white text-sm focus:border-blue-500 focus:outline-none"
-            disabled={isLoading}
+            disabled={isLoading || !isConnected}
           />
           
           {'webkitSpeechRecognition' in window && (
             <button
               onClick={startListening}
-              disabled={isListening || isLoading}
+              disabled={isListening || isLoading || !isConnected}
               className={`px-3 py-2 rounded-md text-sm transition-colors ${
                 isListening 
                   ? 'bg-red-600 text-white' 
@@ -197,7 +229,7 @@ export default function CommandInterface() {
           
           <button
             onClick={handleSubmit}
-            disabled={!command.trim() || isLoading}
+            disabled={!command.trim() || isLoading || !isConnected}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded-md text-sm font-medium transition-colors"
           >
             {isLoading ? 'Processing...' : 'Send'}
@@ -253,3 +285,4 @@ export default function CommandInterface() {
     </div>
   )
 }
+```
