@@ -1,0 +1,305 @@
+version: '3.8'
+
+services:
+  # XR-Swarm-Bridge Core Services
+  swarm-coordinator:
+    build:
+      context: ../ros2_ws
+      dockerfile: ../deploy/Dockerfile.ros2
+    image: xr-swarm-bridge/coordinator:latest
+    container_name: swarm-coordinator
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "8443:8443"  # WebRTC signaling
+      - "11311:11311"  # ROS Master
+    environment:
+      - ROS_DOMAIN_ID=42
+      - ROS_LOCALHOST_ONLY=0
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    volumes:
+      - ../ros2_ws:/opt/ros2_ws
+      - swarm-logs:/var/log/swarm
+      - ./config:/opt/config:ro
+    command: ros2 run xr_swarm_core swarm_coordinator
+    healthcheck:
+      test: ["CMD", "ros2", "node", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  webrtc-bridge:
+    build:
+      context: ../ros2_ws
+      dockerfile: ../deploy/Dockerfile.ros2
+    image: xr-swarm-bridge/webrtc:latest
+    container_name: webrtc-bridge
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "8444:8444"  # WebRTC data channels
+    environment:
+      - ROS_DOMAIN_ID=42
+      - ROS_LOCALHOST_ONLY=0
+      - WEBRTC_PORT=8444
+      - STUN_SERVER=stun:stun.l.google.com:19302
+    volumes:
+      - ../ros2_ws:/opt/ros2_ws
+      - swarm-logs:/var/log/swarm
+      - ./ssl:/opt/ssl:ro
+    command: ros2 run webrtc_bridge webrtc_server
+    depends_on:
+      - swarm-coordinator
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8444/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  webapp:
+    build:
+      context: ../webapp
+      dockerfile: ../deploy/Dockerfile.webapp
+      args:
+        - NODE_ENV=production
+        - REACT_APP_WS_URL=wss://localhost:8443
+        - REACT_APP_WEBRTC_URL=wss://localhost:8444
+    image: xr-swarm-bridge/webapp:latest
+    container_name: swarm-webapp
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "443:443"
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./ssl:/opt/ssl:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - swarm-coordinator
+      - webrtc-bridge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Database for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: swarm-database
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    environment:
+      - POSTGRES_DB=swarm_db
+      - POSTGRES_USER=swarm_user
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U swarm_user -d swarm_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis for caching and real-time data
+  redis:
+    image: redis:7-alpine
+    container_name: swarm-cache
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring and Observability
+  prometheus:
+    image: prom/prometheus
+    container_name: swarm-prometheus
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+  grafana:
+    image: grafana/grafana
+    container_name: swarm-grafana
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_password
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    secrets:
+      - grafana_password
+    depends_on:
+      - prometheus
+
+  # Log aggregation
+  loki:
+    image: grafana/loki
+    container_name: swarm-loki
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail
+    container_name: swarm-promtail
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    volumes:
+      - ./promtail.yml:/etc/promtail/config.yml:ro
+      - swarm-logs:/var/log/swarm:ro
+      - /var/log:/var/log:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  # Security scanning
+  security-scanner:
+    build:
+      context: ./security
+      dockerfile: Dockerfile.security
+    image: xr-swarm-bridge/security:latest
+    container_name: swarm-security
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    environment:
+      - SCAN_INTERVAL=3600  # Scan every hour
+    volumes:
+      - ../:/opt/scan:ro
+      - security-reports:/opt/reports
+    depends_on:
+      - swarm-coordinator
+
+  # Load balancer (for multi-instance deployments)
+  nginx-lb:
+    image: nginx:alpine
+    container_name: swarm-loadbalancer
+    restart: unless-stopped
+    networks:
+      - swarm-network
+      - external-network
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/ssl:ro
+    depends_on:
+      - webapp
+
+  # Backup service
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile.backup
+    image: xr-swarm-bridge/backup:latest
+    container_name: swarm-backup
+    restart: unless-stopped
+    networks:
+      - swarm-network
+    environment:
+      - BACKUP_SCHEDULE=0 2 * * *  # Daily at 2 AM
+      - RETENTION_DAYS=30
+      - S3_BUCKET=${BACKUP_S3_BUCKET}
+      - AWS_ACCESS_KEY_ID_FILE=/run/secrets/aws_access_key
+      - AWS_SECRET_ACCESS_KEY_FILE=/run/secrets/aws_secret_key
+    volumes:
+      - postgres-data:/data/postgres:ro
+      - redis-data:/data/redis:ro
+      - swarm-logs:/data/logs:ro
+      - backup-storage:/opt/backups
+    secrets:
+      - aws_access_key
+      - aws_secret_key
+    depends_on:
+      - postgres
+      - redis
+
+networks:
+  swarm-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  external-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
+    driver: local
+  swarm-logs:
+    driver: local
+  security-reports:
+    driver: local
+  backup-storage:
+    driver: local
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  grafana_password:
+    file: ./secrets/grafana_password.txt
+  aws_access_key:
+    file: ./secrets/aws_access_key.txt
+  aws_secret_key:
+    file: ./secrets/aws_secret_key.txt
+
+# Health check for the entire stack
+x-healthcheck-config: &healthcheck-config
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s

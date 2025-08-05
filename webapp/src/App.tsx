@@ -1,9 +1,14 @@
-import React, { Suspense } from 'react'
+import React, { Suspense, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { Canvas } from '@react-three/fiber'
 import { VRButton, ARButton, XR } from '@react-three/xr'
 import { OrbitControls, Stats, Environment } from '@react-three/drei'
 import { Leva } from 'leva'
+
+// Internationalization
+import './i18n'
+import { useTranslation } from 'react-i18next'
+import { isRTL } from './i18n'
 
 // Store
 import { useSwarmStore } from './store/swarmStore'
@@ -13,6 +18,9 @@ import SwarmScene from './components/SwarmScene'
 import UI from './components/UI'
 import LoadingScreen from './components/LoadingScreen'
 import Dashboard from './components/Dashboard'
+import LanguageSelector from './components/LanguageSelector'
+import { AccessibilityProvider } from './components/AccessibilityProvider'
+import ConsentBanner from './components/ConsentBanner'
 
 // XR Components
 import XRInterface from './xr/XRInterface'
@@ -23,32 +31,45 @@ import { useSwarmConnection } from './hooks/useSwarmConnection'
 
 function App() {
   const { isConnected, connectionStatus } = useSwarmStore()
+  const { t, i18n } = useTranslation()
   
   // Initialize connections
   useWebRTC()
   useSwarmConnection()
 
+  // Set document direction based on language
+  useEffect(() => {
+    document.documentElement.dir = isRTL(i18n.language) ? 'rtl' : 'ltr'
+    document.documentElement.lang = i18n.language
+  }, [i18n.language])
+
   return (
-    <div className="w-full h-screen bg-black overflow-hidden">
-      {/* Development Tools */}
-      <Leva collapsed />
-      
-      {/* VR/AR Entry Buttons */}
-      <div className="absolute top-4 right-4 z-50 space-x-2">
-        <VRButton />
-        <ARButton />
-      </div>
-      
-      {/* Connection Status */}
-      <div className="absolute top-4 left-4 z-50">
-        <div className={`px-3 py-1 rounded text-sm font-medium ${
-          isConnected 
-            ? 'bg-green-600 text-white' 
-            : 'bg-red-600 text-white'
-        }`}>
-          {connectionStatus}
+    <AccessibilityProvider>
+      <div className="w-full h-screen bg-black overflow-hidden" dir={isRTL(i18n.language) ? 'rtl' : 'ltr'}>
+        {/* Development Tools */}
+        <Leva collapsed />
+        
+        {/* Language Selector */}
+        <div className="absolute top-4 left-4 z-50">
+          <LanguageSelector variant="dropdown" className="bg-white/90 backdrop-blur" />
         </div>
-      </div>
+        
+        {/* VR/AR Entry Buttons */}
+        <div className="absolute top-4 right-4 z-50 space-x-2">
+          <VRButton />
+          <ARButton />
+        </div>
+        
+        {/* Connection Status */}
+        <div className="absolute top-16 left-4 z-50">
+          <div className={`px-3 py-1 rounded text-sm font-medium ${
+            isConnected 
+              ? 'bg-green-600 text-white' 
+              : 'bg-red-600 text-white'
+          }`}>
+            {connectionStatus}
+          </div>
+        </div>
 
       <Routes>
         <Route path="/" element={
@@ -105,11 +126,15 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
 
-      {/* Loading Screen */}
-      <Suspense fallback={<LoadingScreen />}>
-        {/* App content loads here */}
-      </Suspense>
-    </div>
+        {/* Loading Screen */}
+        <Suspense fallback={<LoadingScreen />}>
+          {/* App content loads here */}
+        </Suspense>
+        
+        {/* Global Consent Banner */}
+        <ConsentBanner position="bottom" />
+      </div>
+    </AccessibilityProvider>
   )
 }
 
