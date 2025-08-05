@@ -36,6 +36,7 @@ export interface SwarmState {
   // Agents
   agents: Record<string, Agent>
   selectedAgents: string[]
+  trajectories: Record<string, number[][]>
   
   // Mission
   currentMission: Mission | null
@@ -46,10 +47,15 @@ export interface SwarmState {
   showTelemetry: boolean
   showMinimap: boolean
   
+  // Selection
+  isSelecting: boolean
+  selectionBox: { start: { x: number; y: number; z: number }; end: { x: number; y: number; z: number } } | null
+  
   // Network
   latency: number
   packetLoss: number
   bandwidth: number
+  webrtcStats: any
   
   // Actions
   setConnection: (connected: boolean, status: string) => void
@@ -59,6 +65,24 @@ export interface SwarmState {
   deselectAgent: (agentId: string) => void
   clearSelection: () => void
   selectMultiple: (agentIds: string[]) => void
+  
+  // Selection actions
+  startSelection: (position: number[]) => void
+  endSelection: (position: number[]) => void
+  
+  // Command actions
+  sendCommand: (command: string, data?: any) => void
+  addWaypoint: (position: number[]) => void
+  setTargetDirection: (direction: number[]) => void
+  setSendCommand: (sendFn: (command: any) => void) => void
+  openAICommandInterface: () => void
+  
+  // Telemetry actions
+  updateAgentTelemetry: (data: any) => void
+  updateAgentVideo: (agentId: string, videoData: any) => void
+  updateAgentHeartbeat: (agentId: string, timestamp: number) => void
+  setWebRTCStats: (stats: any) => void
+  setConnectionStatus: (status: string) => void
   
   startMission: (mission: Mission) => void
   updateMission: (mission: Mission) => void
@@ -80,6 +104,7 @@ export const useSwarmStore = create<SwarmState>()(
     
     agents: {},
     selectedAgents: [],
+    trajectories: {},
     
     currentMission: null,
     missionHistory: [],
@@ -88,9 +113,13 @@ export const useSwarmStore = create<SwarmState>()(
     showTelemetry: true,
     showMinimap: true,
     
+    isSelecting: false,
+    selectionBox: null,
+    
     latency: 0,
     packetLoss: 0,
     bandwidth: 0,
+    webrtcStats: null,
     
     // Actions
     setConnection: (connected, status) => set({
@@ -152,7 +181,144 @@ export const useSwarmStore = create<SwarmState>()(
     updateNetworkMetrics: (metrics) => set((state) => ({
       ...state,
       ...metrics
-    }))
+    })),
+    
+    // Selection actions
+    startSelection: (position) => set({
+      isSelecting: true,
+      selectionBox: {
+        start: { x: position[0], y: position[1], z: position[2] },
+        end: { x: position[0], y: position[1], z: position[2] }
+      }
+    }),
+    
+    endSelection: (position) => set((state) => {
+      if (!state.selectionBox) return state
+      
+      const updatedBox = {
+        ...state.selectionBox,
+        end: { x: position[0], y: position[1], z: position[2] }
+      }
+      
+      // Select agents within the box
+      const selectedIds = Object.values(state.agents)
+        .filter(agent => {
+          const [x, y, z] = agent.position
+          return x >= Math.min(updatedBox.start.x, updatedBox.end.x) &&
+                 x <= Math.max(updatedBox.start.x, updatedBox.end.x) &&
+                 y >= Math.min(updatedBox.start.y, updatedBox.end.y) &&
+                 y <= Math.max(updatedBox.start.y, updatedBox.end.y) &&
+                 z >= Math.min(updatedBox.start.z, updatedBox.end.z) &&
+                 z <= Math.max(updatedBox.start.z, updatedBox.end.z)
+        })
+        .map(agent => agent.id)
+      
+      return {
+        isSelecting: false,
+        selectionBox: null,
+        selectedAgents: selectedIds
+      }
+    }),
+    
+    // Command actions - these will be populated by WebRTC hook
+    sendCommand: (command, data) => {
+      console.log('Send command:', command, data)
+      // This will be overridden by the WebRTC hook
+    },
+    
+    addWaypoint: (position) => set((state) => {
+      const updatedAgents = { ...state.agents }
+      state.selectedAgents.forEach(agentId => {
+        if (updatedAgents[agentId]) {
+          updatedAgents[agentId] = {
+            ...updatedAgents[agentId],
+            telemetry: {
+              ...updatedAgents[agentId].telemetry,
+              waypoints: [...(updatedAgents[agentId].telemetry.waypoints || []), position]
+            }
+          }
+        }
+      })
+      return { agents: updatedAgents }
+    }),
+    
+    setTargetDirection: (direction) => {
+      get().sendCommand('set_target_direction', { direction })
+    },
+    
+    setSendCommand: (sendFn) => set({ sendCommand: sendFn }),
+    
+    openAICommandInterface: () => {
+      console.log('Opening AI command interface')
+      // This would open a modal or panel for AI commands
+    },
+    
+    // Telemetry actions
+    updateAgentTelemetry: (data) => {
+      if (!data.agent_id) return
+      
+      set((state) => {
+        const agent = state.agents[data.agent_id]
+        if (!agent) return state
+        
+        // Update trajectory
+        const newTrajectories = { ...state.trajectories }
+        if (!newTrajectories[data.agent_id]) {
+          newTrajectories[data.agent_id] = []
+        }
+        
+        if (data.position) {
+          newTrajectories[data.agent_id].push(data.position)
+          // Keep only last 100 positions
+          if (newTrajectories[data.agent_id].length > 100) {
+            newTrajectories[data.agent_id] = newTrajectories[data.agent_id].slice(-100)
+          }
+        }
+        
+        return {
+          agents: {
+            ...state.agents,
+            [data.agent_id]: {
+              ...agent,
+              position: data.position || agent.position,
+              rotation: data.rotation || agent.rotation,
+              status: data.status || agent.status,
+              battery: data.battery_level !== undefined ? data.battery_level : agent.battery,
+              telemetry: { ...agent.telemetry, ...data },
+              lastSeen: Date.now()
+            }
+          },
+          trajectories: newTrajectories
+        }
+      })
+    },
+    
+    updateAgentVideo: (agentId, videoData) => set((state) => ({
+      agents: {
+        ...state.agents,
+        [agentId]: state.agents[agentId] ? {
+          ...state.agents[agentId],
+          telemetry: {
+            ...state.agents[agentId].telemetry,
+            videoFrame: videoData
+          }
+        } : state.agents[agentId]
+      }
+    })),
+    
+    updateAgentHeartbeat: (agentId, timestamp) => set((state) => ({
+      agents: {
+        ...state.agents,
+        [agentId]: state.agents[agentId] ? {
+          ...state.agents[agentId],
+          lastSeen: timestamp
+        } : state.agents[agentId]
+      }
+    })),
+    
+    setWebRTCStats: (stats) => set({ webrtcStats: stats }),
+    
+    setConnectionStatus: (status) => set({ connectionStatus: status })
   }))
 )
 
