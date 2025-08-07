@@ -1,0 +1,56 @@
+# Core dependencies for Sentiment Analyzer Pro
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+
+# Text processing and NLP
+nltk>=3.7
+spacy>=3.4.0
+textblob>=0.17.1
+transformers>=4.20.0
+torch>=1.12.0
+
+# Web framework and API
+flask>=2.1.0
+flask-cors>=3.0.10
+gunicorn>=20.1.0
+uvicorn>=0.18.0
+fastapi>=0.78.0
+
+# Data handling and serialization
+pydantic>=1.9.0
+requests>=2.28.0
+aiohttp>=3.8.0
+
+# Monitoring and logging
+prometheus-client>=0.14.0
+structlog>=22.1.0
+
+# Testing and development
+pytest>=7.1.0
+pytest-asyncio>=0.19.0
+pytest-cov>=3.0.0
+black>=22.3.0
+flake8>=4.0.0
+mypy>=0.961
+
+# Optional ML backends
+tensorflow>=2.9.0
+onnx>=1.12.0
+onnxruntime>=1.12.0
+
+# Performance and optimization
+numba>=0.56.0
+joblib>=1.1.0
+
+# International support
+polyglot>=16.07.04
+langdetect>=1.0.9
+
+# Security
+cryptography>=37.0.0
+bcrypt>=3.2.0
+
+# Configuration and environment
+python-decouple>=3.6
+pyyaml>=6.0

@@ -1,0 +1,3 @@
+"""
+Core sentiment analysis modules
+"""
