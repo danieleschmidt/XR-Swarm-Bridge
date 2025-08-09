@@ -1,4 +1,3 @@
-```typescript
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useSwarmStore } from '../store/swarmStore'
 
@@ -546,4 +545,3 @@ export function useWebRTC() {
     ) || websocketRef.current?.readyState === WebSocket.OPEN
   }
 }
-```

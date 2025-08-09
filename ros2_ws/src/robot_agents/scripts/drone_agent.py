@@ -15,6 +15,8 @@ from xr_swarm_core.swarm_agent_base import SwarmAgent
 import json
 import time
 import math
+import numpy as np
+import threading
 from typing import Dict, Any, List
 
 
@@ -37,6 +39,18 @@ class DroneAgent(SwarmAgent):
         self.altitude = 0.0
         self.is_armed = False
         self.flight_mode = "MANUAL"
+        
+        # Simulation physics
+        self.position = np.array([
+            np.random.uniform(-50, 50),
+            np.random.uniform(-50, 50), 
+            0.0
+        ])
+        self.velocity = np.array([0.0, 0.0, 0.0])
+        self.target_velocity = np.array([0.0, 0.0, 0.0])
+        self.max_speed = 10.0
+        self.acceleration = 3.0
+        self.home_position = self.position.copy()
         
         # Publishers for drone control
         self.cmd_vel_pub = self.create_publisher(
@@ -75,11 +89,72 @@ class DroneAgent(SwarmAgent):
         self.current_waypoint_index = 0
         self.navigation_tolerance = 1.0  # meters
         
-        # Telemetry timer
+        # Simulation and telemetry timers
+        self.sim_timer = self.create_timer(0.1, self.simulation_step)
         self.telemetry_timer = self.create_timer(0.5, self.publish_drone_telemetry)
         
         self.get_logger().info(f"DroneAgent {self.agent_id} initialized")
     
+    def simulation_step(self):
+        """Simulate drone physics and movement"""
+        dt = 0.1  # 100ms timestep
+        
+        # Apply simple physics
+        vel_error = self.target_velocity - self.velocity
+        max_accel = self.acceleration * dt
+        
+        for i in range(3):
+            if abs(vel_error[i]) > max_accel:
+                self.velocity[i] += np.sign(vel_error[i]) * max_accel
+            else:
+                self.velocity[i] = self.target_velocity[i]
+        
+        # Enforce maximum speed
+        speed = np.linalg.norm(self.velocity)
+        if speed > self.max_speed:
+            self.velocity = self.velocity / speed * self.max_speed
+        
+        # Update position
+        self.position += self.velocity * dt
+        
+        # Enforce ground constraint
+        if self.position[2] < 0:
+            self.position[2] = 0
+            self.velocity[2] = max(0, self.velocity[2])
+            if self.altitude <= 0.5:
+                self.velocity *= 0.9  # Ground friction
+        
+        # Update internal state
+        self.altitude = self.position[2]
+        
+        # Update pose message
+        self.current_pose.header.stamp = self.get_clock().now().to_msg()
+        self.current_pose.header.frame_id = "map"
+        self.current_pose.pose.position.x = float(self.position[0])
+        self.current_pose.pose.position.y = float(self.position[1])
+        self.current_pose.pose.position.z = float(self.position[2])
+        
+        # Publish pose for swarm coordination
+        self.publish_pose(self.current_pose)
+        
+        # Update navigation if active
+        if self.waypoints and self.current_waypoint_index < len(self.waypoints):
+            self.check_waypoint_reached()
+        
+        # Simulate battery drain
+        if self.altitude > 0.1:  # Flying
+            self.battery_level = max(0.0, self.battery_level - 0.002)
+        
+        # Publish WebRTC telemetry for low-latency updates
+        webrtc_data = {
+            'pos': {'x': float(self.position[0]), 'y': float(self.position[1]), 'z': float(self.position[2])},
+            'bat': self.battery_level,
+            'stat': self.status
+        }
+        webrtc_msg = String()
+        webrtc_msg.data = json.dumps(webrtc_data)
+        self.webrtc_pub.publish(webrtc_msg)
+
     def register_drone_handlers(self):
         """Register drone-specific command handlers"""
         self.command_handlers.update({
@@ -92,7 +167,8 @@ class DroneAgent(SwarmAgent):
             'set_altitude': self.handle_set_altitude,
             'arm': self.handle_arm,
             'disarm': self.handle_disarm,
-            'return_to_base': self.handle_return_to_base
+            'return_to_base': self.handle_return_to_base,
+            'formation': self.handle_formation
         })
     
     def pose_callback(self, msg: PoseStamped):
@@ -122,28 +198,30 @@ class DroneAgent(SwarmAgent):
     
     def handle_takeoff(self, command_data: Dict[str, Any]):
         """Handle takeoff command"""
-        altitude = command_data.get('altitude', 5.0)
+        altitude = command_data.get('altitude', 10.0)
         
-        if not self.is_armed:
-            self.get_logger().error("Cannot takeoff - drone not armed")
-            return
-        
-        self.status = "taking_off"
-        
-        takeoff_msg = String()
-        takeoff_msg.data = json.dumps({'altitude': altitude})
-        self.takeoff_pub.publish(takeoff_msg)
-        
-        self.get_logger().info(f"Taking off to {altitude}m altitude")
+        if self.altitude < 0.5:  # On ground
+            self.is_armed = True
+            self.status = "taking_off"
+            
+            # Set upward velocity for takeoff
+            takeoff_target = self.position.copy()
+            takeoff_target[2] = altitude
+            self.navigate_to_position(takeoff_target.tolist())
+            
+            self.get_logger().info(f"Taking off to {altitude}m altitude")
+        else:
+            self.get_logger().warn("Already airborne!")
     
     def handle_land(self, command_data: Dict[str, Any]):
         """Handle landing command"""
         self.status = "landing"
         self.waypoints.clear()
         
-        land_msg = String()
-        land_msg.data = json.dumps({})
-        self.land_pub.publish(land_msg)
+        # Navigate to ground level
+        land_target = self.position.copy()
+        land_target[2] = 0.0
+        self.navigate_to_position(land_target.tolist())
         
         self.get_logger().info("Landing initiated")
     
@@ -166,33 +244,22 @@ class DroneAgent(SwarmAgent):
             self.get_logger().error("Navigate command missing position or waypoints")
     
     def navigate_to_position(self, position: List[float]):
-        """Navigate to a specific position"""
+        """Navigate to a specific position using physics simulation"""
         if len(position) < 3:
-            position.append(self.altitude)  # Use current altitude if not specified
+            position.append(max(5.0, self.altitude))  # Default altitude
         
-        # Calculate velocity command toward target
-        dx = position[0] - self.current_pose.pose.position.x
-        dy = position[1] - self.current_pose.pose.position.y
-        dz = position[2] - self.current_pose.pose.position.z
-        
-        distance = math.sqrt(dx*dx + dy*dy + dz*dz)
+        target_pos = np.array(position, dtype=float)
+        distance_vec = target_pos - self.position
+        distance = np.linalg.norm(distance_vec)
         
         if distance > self.navigation_tolerance:
-            # Normalize and scale velocity
-            max_speed = 2.0  # m/s
-            speed = min(max_speed, distance * 0.5)  # Proportional control
-            
-            cmd_vel = Twist()
-            if distance > 0:
-                cmd_vel.linear.x = (dx / distance) * speed
-                cmd_vel.linear.y = (dy / distance) * speed
-                cmd_vel.linear.z = (dz / distance) * speed
-            
-            self.cmd_vel_pub.publish(cmd_vel)
+            # Proportional navigation
+            direction = distance_vec / distance
+            desired_speed = min(self.max_speed * 0.5, distance * 0.8)
+            self.target_velocity = direction * desired_speed
         else:
-            # Stop at target
-            cmd_vel = Twist()
-            self.cmd_vel_pub.publish(cmd_vel)
+            # Reached target - hover
+            self.target_velocity = np.array([0.0, 0.0, 0.0])
             self.status = "hovering"
     
     def navigate_to_waypoint(self, waypoint_index: int):
@@ -207,18 +274,18 @@ class DroneAgent(SwarmAgent):
             return
         
         waypoint = self.waypoints[self.current_waypoint_index]
+        if len(waypoint) < 3:
+            waypoint.append(max(5.0, self.altitude))
         
-        dx = waypoint[0] - self.current_pose.pose.position.x
-        dy = waypoint[1] - self.current_pose.pose.position.y
-        dz = waypoint[2] - self.current_pose.pose.position.z if len(waypoint) > 2 else 0
-        
-        distance = math.sqrt(dx*dx + dy*dy + dz*dz)
+        target_pos = np.array(waypoint, dtype=float)
+        distance = np.linalg.norm(target_pos - self.position)
         
         if distance <= self.navigation_tolerance:
             self.current_waypoint_index += 1
             
             if self.current_waypoint_index >= len(self.waypoints):
                 # All waypoints reached
+                self.target_velocity = np.array([0.0, 0.0, 0.0])
                 self.status = "hovering"
                 self.waypoints.clear()
                 self.get_logger().info("All waypoints reached")
@@ -230,10 +297,7 @@ class DroneAgent(SwarmAgent):
         """Handle hover command"""
         self.status = "hovering"
         self.waypoints.clear()
-        
-        # Send zero velocity
-        cmd_vel = Twist()
-        self.cmd_vel_pub.publish(cmd_vel)
+        self.target_velocity = np.array([0.0, 0.0, 0.0])
         
         self.get_logger().info("Hovering in place")
     
@@ -356,13 +420,22 @@ class DroneAgent(SwarmAgent):
         
         self.get_logger().info(f"Returning to base at {base_position}")
     
+    def handle_formation(self, command_data: Dict[str, Any]):
+        """Handle formation flying command"""
+        formation_pos = command_data.get('position', [0, 0, 10])
+        formation_type = command_data.get('formation', 'line')
+        
+        self.navigate_to_position(formation_pos)
+        self.status = f"formation_{formation_type}"
+        self.get_logger().info(f"Moving to formation position {formation_pos}")
+    
     def handle_emergency_stop(self, command_data: Dict[str, Any]):
         """Override emergency stop for drone-specific behavior"""
         super().handle_emergency_stop(command_data)
         
-        # Stop all movement
-        cmd_vel = Twist()
-        self.cmd_vel_pub.publish(cmd_vel)
+        # Stop all movement immediately
+        self.target_velocity = np.array([0.0, 0.0, 0.0])
+        self.velocity = np.array([0.0, 0.0, 0.0])
         
         # Clear waypoints
         self.waypoints.clear()
@@ -380,13 +453,12 @@ class DroneAgent(SwarmAgent):
             'altitude': self.altitude,
             'is_armed': self.is_armed,
             'flight_mode': self.flight_mode,
-            'position': {
-                'x': self.current_pose.pose.position.x,
-                'y': self.current_pose.pose.position.y,
-                'z': self.current_pose.pose.position.z
-            },
+            'position': self.position.tolist(),
+            'velocity': self.velocity.tolist(),
+            'target_velocity': self.target_velocity.tolist(),
             'waypoints_remaining': len(self.waypoints) - self.current_waypoint_index,
-            'status': self.status
+            'status': self.status,
+            'timestamp': time.time()
         }
         
         self.publish_telemetry(telemetry)
