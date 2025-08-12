@@ -1,4 +1,3 @@
-```typescript
 import React, { useMemo } from 'react'
 import { useSwarmStore, useSelectedAgents } from '../store/swarmStore'
 import { Line } from '@react-three/drei'
@@ -191,4 +190,3 @@ function calculatePathDistance(points: number[][]): number {
   }
   return distance
 }
-```

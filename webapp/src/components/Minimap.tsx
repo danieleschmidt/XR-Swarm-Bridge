@@ -1,4 +1,3 @@
-```tsx
 import React, { useRef, useEffect } from 'react'
 import { useSwarmStore, useActiveAgents, useSelectedAgents } from '../store/swarmStore'
 
@@ -217,4 +216,3 @@ export default function Minimap() {
     </div>
   )
 }
-```

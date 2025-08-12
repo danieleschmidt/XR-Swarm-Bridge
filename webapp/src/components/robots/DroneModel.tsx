@@ -1,4 +1,3 @@
-```tsx
 import React, { useRef, useEffect } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useSwarmStore } from '../../store/swarmStore'
@@ -186,4 +185,3 @@ export default function DroneModel({ agent, isSelected }: DroneModelProps) {
     </group>
   )
 }
-```
