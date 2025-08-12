@@ -1,4 +1,3 @@
-```tsx
 import React, { useState, useEffect } from 'react'
 import { useSwarmStore, useSelectedAgents } from '../store/swarmStore'
 
@@ -299,4 +298,3 @@ function getBatteryColor(battery: number): string {
   if (battery > 30) return 'text-yellow-400'
   return 'text-red-400'
 }
-```

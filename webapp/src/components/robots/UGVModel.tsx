@@ -1,4 +1,3 @@
-```typescript
 import React, { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { useSwarmStore } from '../../store/swarmStore'
@@ -203,4 +202,3 @@ export default function UGVModel({ agent, isSelected }: UGVModelProps) {
     </group>
   )
 }
-```

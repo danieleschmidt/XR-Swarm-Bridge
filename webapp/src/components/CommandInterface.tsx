@@ -1,4 +1,3 @@
-```typescript
 import React, { useState, useRef, useEffect } from 'react'
 import { useGPTIntegration } from '../ai/gptIntegration'
 import { useSwarmConnection } from '../hooks/useSwarmConnection'
@@ -285,4 +284,3 @@ export default function CommandInterface() {
     </div>
   )
 }
-```
