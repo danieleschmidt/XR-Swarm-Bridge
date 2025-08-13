@@ -89,7 +89,7 @@ export const AutonomousPlanningPanel: React.FC<AutonomousPlanningPanelProps> = (
     }
   };
 
-  const simulatePhaseExecution = async (phase: any): Promise<void> {
+  const simulatePhaseExecution = async (phase: any) => {
     return new Promise((resolve) => {
       const duration = Math.min(phase.duration, 5); // Cap simulation duration
       const steps = Math.ceil(duration);

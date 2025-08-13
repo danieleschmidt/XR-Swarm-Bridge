@@ -51,7 +51,7 @@ export interface SwarmCommand {
   timeout?: number
 }
 
-class GPTIntegration {
+export class GPTIntegration {
   private apiKey: string
   private baseUrl: string = 'https://api.openai.com/v1'
   private model: string = 'gpt-4o'

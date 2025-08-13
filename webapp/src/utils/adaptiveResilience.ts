@@ -277,4 +277,5 @@ class AdaptiveResilienceSystem {
 }
 
 export const adaptiveResilienceSystem = new AdaptiveResilienceSystem()
+export const adaptiveResilienceEngine = adaptiveResilienceSystem // Legacy alias
 export default adaptiveResilienceSystem

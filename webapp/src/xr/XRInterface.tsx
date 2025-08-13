@@ -1,4 +1,3 @@
-```tsx
 import React, { useRef } from 'react'
 import { useXR, useController, useHitTest, Interactive } from '@react-three/xr'
 import { useFrame } from '@react-three/fiber'
@@ -424,4 +423,3 @@ function getBatteryColor(level: number): string {
   if (level > 30) return '#ffff00'
   return '#ff0000'
 }
-```

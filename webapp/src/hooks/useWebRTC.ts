@@ -258,7 +258,7 @@ export function useWebRTC() {
         type: 'webrtc_answer',
         agentId,
         sdp: answer.sdp,
-        type: answer.type
+        answerType: answer.type
       }))
     }
   }
