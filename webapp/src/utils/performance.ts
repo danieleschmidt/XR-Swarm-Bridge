@@ -626,6 +626,9 @@ class PerformanceOptimizer {
 // Singleton instance
 export const performanceOptimizer = new PerformanceOptimizer()
 
+// Legacy alias for backward compatibility
+export const performanceMonitor = performanceOptimizer
+
 // React hook for performance monitoring
 import { useState, useEffect } from 'react'
 

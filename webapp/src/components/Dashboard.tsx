@@ -4,8 +4,8 @@ import { useSwarmStore } from '../store/swarmStore'
 import { useTranslation } from 'react-i18next'
 import TelemetryPanel from './TelemetryPanel'
 import RobotPanel from './RobotPanel'
-import QuantumDashboard from './QuantumDashboard'
-import AutonomousPlanningPanel from './AutonomousPlanningPanel'
+import { QuantumDashboard } from './QuantumDashboard'
+import { AutonomousPlanningPanel } from './AutonomousPlanningPanel'
 
 export default function Dashboard() {
   const { t } = useTranslation()

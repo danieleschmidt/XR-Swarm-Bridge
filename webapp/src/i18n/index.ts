@@ -89,7 +89,12 @@ export const formatNumber = (num: number, options?: Intl.NumberFormatOptions) =>
 }
 
 export const formatDate = (date: Date, options?: Intl.DateTimeFormatOptions) => {
-  return new Intl.DateTimeFormat(i18n.language, options).format(date)
+  try {
+    return new Intl.DateTimeFormat(i18n.language, options).format(date)
+  } catch (error) {
+    // Handle invalid dates gracefully
+    return 'Invalid Date'
+  }
 }
 
 export const formatCurrency = (amount: number, currency: string = 'USD') => {
