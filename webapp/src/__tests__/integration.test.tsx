@@ -25,7 +25,21 @@ vi.mock('@react-three/drei', () => ({
 vi.mock('@react-three/xr', () => ({
   VRButton: () => <button data-testid="vr-button">Enter VR</button>,
   ARButton: () => <button data-testid="ar-button">Enter AR</button>,
-  XR: ({ children }: any) => <div data-testid="xr">{children}</div>
+  XR: ({ children }: any) => <div data-testid="xr">{children}</div>,
+  useXR: () => ({
+    isPresenting: false,
+    player: { position: [0, 0, 0], rotation: [0, 0, 0] },
+    session: null,
+    visibilityState: 'visible'
+  }),
+  useController: () => ({
+    controller: null,
+    grip: null,
+    inputSource: null
+  }),
+  useHitTest: () => [],
+  Hands: ({ children }: any) => <div data-testid="hands">{children}</div>,
+  Controllers: ({ children }: any) => <div data-testid="controllers">{children}</div>
 }))
 
 vi.mock('leva', () => ({
