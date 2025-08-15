@@ -1,0 +1,357 @@
+# Production-optimized deployment configuration for XR-Swarm-Bridge
+# Quantum-enhanced massive scale robotics platform
+
+version: '3.8'
+
+networks:
+  xr-swarm-net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  ros2_workspace:
+    driver: local
+  webapp_dist:
+    driver: local
+  monitoring_data:
+    driver: local
+  quantum_cache:
+    driver: local
+  massive_scale_cache:
+    driver: local
+
+services:
+  # Load Balancer with Quantum-Enhanced Routing
+  quantum-load-balancer:
+    image: nginx:alpine
+    container_name: xr-swarm-lb
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"  # WebRTC signaling
+    volumes:
+      - ./nginx-production.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - xr-swarm-net
+    restart: unless-stopped
+    environment:
+      - NGINX_WORKER_PROCESSES=auto
+      - NGINX_WORKER_CONNECTIONS=4096
+    depends_on:
+      - webapp-cluster
+      - ros2-swarm-coordinator
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+
+  # Webapp Cluster for Massive Scale (3 replicas)
+  webapp-cluster:
+    image: xr-swarm-webapp:production
+    build:
+      context: ../webapp
+      dockerfile: ../deploy/Dockerfile.webapp
+      target: production
+    container_name: xr-swarm-webapp-${REPLICA_ID:-1}
+    expose:
+      - "3000"
+    networks:
+      - xr-swarm-net
+    volumes:
+      - webapp_dist:/app/dist:ro
+      - quantum_cache:/app/cache
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=https://api.xr-swarm.dev
+      - VITE_WEBRTC_URL=wss://signaling.xr-swarm.dev:8443
+      - VITE_QUANTUM_OPTIMIZATION=enabled
+      - VITE_MASSIVE_SCALE=enabled
+      - VITE_MAX_ROBOTS=5000
+      - VITE_ENABLE_ANALYTICS=true
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+
+  # ROS2 Swarm Coordinator with Quantum Optimization
+  ros2-swarm-coordinator:
+    image: xr-swarm-ros2:production
+    build:
+      context: ../ros2_ws
+      dockerfile: ../deploy/Dockerfile.ros2
+    container_name: xr-swarm-coordinator
+    ports:
+      - "11311:11311"  # ROS Master
+      - "11312:11312"  # ROS Parameter Server
+    networks:
+      - xr-swarm-net
+    volumes:
+      - ros2_workspace:/ros2_ws
+      - massive_scale_cache:/opt/massive_scale_cache
+    environment:
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_cyclonedx_cpp
+      - ROS_LOCALHOST_ONLY=0
+      - QUANTUM_OPTIMIZATION_ENABLED=true
+      - MAX_ROBOTS=5000
+      - SWARM_FORMATION_ALGORITHM=quantum_enhanced
+      - NETWORK_TOPOLOGY=adaptive_mesh
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    privileged: true
+    
+  # High-Performance WebRTC Signaling Server
+  webrtc-signaling:
+    image: node:18-alpine
+    container_name: xr-swarm-signaling
+    working_dir: /app
+    command: >
+      sh -c "npm install ws uuid &&
+             node -e 'const WebSocket = require(\"ws\");
+             const wss = new WebSocket.Server({ port: 8443 });
+             console.log(\"WebRTC Signaling Server started on port 8443\");
+             wss.on(\"connection\", (ws) => {
+               console.log(\"Client connected\");
+               ws.on(\"message\", (data) => {
+                 wss.clients.forEach((client) => {
+                   if (client !== ws && client.readyState === WebSocket.OPEN) {
+                     client.send(data);
+                   }
+                 });
+               });
+             });'"
+    ports:
+      - "8443:8443"
+    networks:
+      - xr-swarm-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # Redis for High-Performance Caching and Session Management
+  redis-cluster:
+    image: redis:7-alpine
+    container_name: xr-swarm-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - xr-swarm-net
+    volumes:
+      - ./redis.conf:/etc/redis/redis.conf:ro
+    command: redis-server /etc/redis/redis.conf
+    environment:
+      - REDIS_REPLICATION_MODE=master
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-secure_redis_password}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # PostgreSQL for Mission Data and Analytics
+  postgres-primary:
+    image: postgres:15-alpine
+    container_name: xr-swarm-postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - xr-swarm-net
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - POSTGRES_DB=xr_swarm
+      - POSTGRES_USER=xr_swarm_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secure_postgres_password}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+
+  # Prometheus for Advanced Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: xr-swarm-prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - xr-swarm-net
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - monitoring_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # Grafana for Quantum Metrics Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: xr-swarm-grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - xr-swarm-net
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana-datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin_password}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+
+  # Elasticsearch for Log Aggregation and Analytics
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    container_name: xr-swarm-elasticsearch
+    ports:
+      - "9200:9200"
+    networks:
+      - xr-swarm-net
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - xpack.security.enabled=false
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+
+  # Jaeger for Distributed Tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: xr-swarm-jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14268:14268"  # Jaeger collector
+    networks:
+      - xr-swarm-net
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # MQTT Broker for Robot Communication
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: xr-swarm-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"  # WebSocket
+    networks:
+      - xr-swarm-net
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # AI Services for Autonomous Planning
+  ai-planning-service:
+    image: xr-swarm-ai:production
+    container_name: xr-swarm-ai
+    ports:
+      - "5000:5000"
+    networks:
+      - xr-swarm-net
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - QUANTUM_PLANNING_ENABLED=true
+      - MAX_CONCURRENT_PLANS=100
+      - PLANNING_ALGORITHMS=qaoa,vqe,quantum_annealing
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+
+volumes:
+  postgres_data:
+  grafana_data:
+  elasticsearch_data:
+
+# Health checks and auto-scaling configuration
+x-healthcheck: &healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+# Production deployment profiles
+profiles:
+  - development
+  - staging  
+  - production
+  - massive-scale
