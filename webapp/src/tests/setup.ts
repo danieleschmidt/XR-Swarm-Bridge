@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import '@testing-library/jest-dom'
 
 // Mock WebGL context for Three.js tests
 const mockWebGLContext = {
