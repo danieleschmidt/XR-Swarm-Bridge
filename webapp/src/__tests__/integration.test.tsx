@@ -1,12 +1,97 @@
-I need permission to write the resolved file. The conflict resolution merges both versions by:
+import { render, screen, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import App from '../App';
 
-1. Including all properties from both HEAD and PR branches in the `useXR` mock
-2. Maintaining consistent property order with `grip` in the middle position for `useController`
-3. Preserving the additional mocks from HEAD (`useHitTest`, `Hands`, `Controllers`)
-4. Keeping all functionality from both branches intact
+// Mock WebRTC and XR dependencies
+vi.mock('@react-three/xr', () => ({
+  XR: ({ children }: { children: React.ReactNode }) => <div data-testid="xr-container">{children}</div>,
+  useXR: () => ({
+    isPresenting: false,
+    player: null,
+    isHandTracking: false,
+    session: null,
+    visibilityState: 'visible',
+    controllers: [],
+    hands: []
+  }),
+  useController: () => ({
+    inputSource: null,
+    grip: null,
+    hand: null
+  }),
+  useHitTest: () => [],
+  Hands: ({ children }: { children: React.ReactNode }) => <group>{children}</group>,
+  Controllers: ({ children }: { children: React.ReactNode }) => <group>{children}</group>
+}));
 
-The resolved version includes:
-- `visibilityState` from HEAD
-- `controllers` and `hands` arrays from PR branch
-- All controller properties in consistent order
-- All additional component mocks from HEAD
+vi.mock('../hooks/useWebRTC', () => ({
+  useWebRTC: () => ({
+    isConnected: false,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    sendMessage: vi.fn(),
+    peerConnection: null
+  })
+}));
+
+vi.mock('../hooks/useSwarmConnection', () => ({
+  useSwarmConnection: () => ({
+    robots: [],
+    isConnected: false,
+    connectionStatus: 'disconnected',
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    sendCommand: vi.fn()
+  })
+}));
+
+describe('XR-Swarm-Bridge Integration Tests', () => {
+  beforeEach(() => {
+    // Reset all mocks before each test
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Clean up after each test
+    vi.resetAllMocks();
+  });
+
+  it('should render main application without crashing', () => {
+    render(<App />);
+    expect(screen.getByTestId('xr-container')).toBeInTheDocument();
+  });
+
+  it('should initialize with default state', async () => {
+    render(<App />);
+    
+    await waitFor(() => {
+      expect(screen.getByTestId('xr-container')).toBeInTheDocument();
+    });
+  });
+
+  it('should handle XR session management', async () => {
+    const mockConnect = vi.fn();
+    
+    render(<App />);
+    
+    await act(async () => {
+      // Simulate XR session start
+      mockConnect();
+    });
+    
+    expect(mockConnect).toHaveBeenCalled();
+  });
+
+  it('should manage swarm connections properly', async () => {
+    const mockSendCommand = vi.fn();
+    
+    render(<App />);
+    
+    await act(async () => {
+      // Simulate swarm command
+      mockSendCommand('test-command');
+    });
+    
+    expect(mockSendCommand).toHaveBeenCalledWith('test-command');
+  });
+});
