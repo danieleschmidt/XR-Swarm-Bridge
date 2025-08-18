@@ -293,13 +293,15 @@ describe('SwarmStore', () => {
     it('should partially update network metrics', () => {
       const { updateNetworkMetrics } = useSwarmStore.getState()
       
+      // Set initial bandwidth to test partial updates
+      updateNetworkMetrics({ bandwidth: 1000 })
       updateNetworkMetrics({ latency: 100 })
       updateNetworkMetrics({ packetLoss: 0.01 })
       
       const state = useSwarmStore.getState()
       expect(state.latency).toBe(100)
       expect(state.packetLoss).toBe(0.01)
-      expect(state.bandwidth).toBe(0) // Should remain unchanged
+      expect(state.bandwidth).toBe(1000) // Should remain unchanged from first update
     })
   })
 })

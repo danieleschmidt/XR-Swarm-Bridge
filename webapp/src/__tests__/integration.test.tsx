@@ -5,6 +5,8 @@ import App from '../App';
 // Mock WebRTC and XR dependencies
 vi.mock('@react-three/xr', () => ({
   XR: ({ children }: { children: React.ReactNode }) => <div data-testid="xr-container">{children}</div>,
+  VRButton: ({ children }: { children?: React.ReactNode }) => <button data-testid="vr-button">{children || 'Enter VR'}</button>,
+  ARButton: ({ children }: { children?: React.ReactNode }) => <button data-testid="ar-button">{children || 'Enter AR'}</button>,
   useXR: () => ({
     isPresenting: false,
     player: null,
