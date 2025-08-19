@@ -1,0 +1,170 @@
+# Multi-stage production-optimized Dockerfile for XR-Swarm-Bridge
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+RUN apk add --no-cache libc6-compat git
+WORKDIR /app
+
+# Install dependencies based on the preferred package manager
+COPY package.json package-lock.json* ./
+RUN npm ci --only=production --ignore-scripts && npm cache clean --force
+
+# Rebuild the source code only when needed
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Set production environment
+ENV NODE_ENV=production
+ENV VITE_BUILD_MODE=production
+
+# Install dev dependencies and build
+RUN npm ci --ignore-scripts
+RUN npm run build
+
+# Production image with optimized layers
+FROM nginx:alpine AS runner
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    curl \
+    ca-certificates \
+    tzdata
+
+# Create app user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy built application
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
+
+# Copy nginx configuration
+COPY nginx.production.conf /etc/nginx/nginx.conf
+
+# Copy health check script
+COPY <<EOF /usr/local/bin/healthcheck.sh
+#!/bin/sh
+curl -f http://localhost/health || exit 1
+EOF
+
+RUN chmod +x /usr/local/bin/healthcheck.sh
+
+# Security configurations
+RUN chown -R nextjs:nodejs /usr/share/nginx/html
+RUN chmod -R 755 /usr/share/nginx/html
+
+# Add security headers and optimizations to nginx config
+COPY <<'EOF' /etc/nginx/conf.d/security.conf
+# Security headers
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-XSS-Protection "1; mode=block" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss: ws: https:; worker-src 'self' blob:;" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), gyroscope=(), magnetometer=(), payment=(), usb=()" always;
+
+# CORS for WebXR and WebRTC
+add_header Access-Control-Allow-Origin "*" always;
+add_header Access-Control-Allow-Methods "GET, POST, OPTIONS, PUT, DELETE" always;
+add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization" always;
+
+# Performance optimizations
+gzip on;
+gzip_vary on;
+gzip_min_length 1024;
+gzip_types
+    text/plain
+    text/css
+    text/xml
+    text/javascript
+    application/javascript
+    application/xml+rss
+    application/json
+    image/svg+xml;
+
+# Cache static assets
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    add_header Vary Accept-Encoding;
+}
+
+# Cache HTML with shorter duration
+location ~* \.html$ {
+    expires 1h;
+    add_header Cache-Control "public, must-revalidate";
+}
+EOF
+
+# Add WebXR and WebRTC specific configurations
+COPY <<'EOF' /etc/nginx/conf.d/webxr.conf
+# WebXR and WebRTC optimizations
+location /api/webrtc {
+    proxy_pass http://backend:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+}
+
+# WebSocket support for real-time communication
+location /ws {
+    proxy_pass http://backend:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_cache_bypass $http_upgrade;
+}
+
+# Health check endpoint
+location /health {
+    access_log off;
+    return 200 "healthy\n";
+    add_header Content-Type text/plain;
+}
+
+# API routes with rate limiting
+location /api/ {
+    limit_req zone=api burst=20 nodelay;
+    proxy_pass http://backend:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Rate limiting configuration
+limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+limit_req_status 429;
+EOF
+
+# Expose ports
+EXPOSE 80 443
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD /usr/local/bin/healthcheck.sh
+
+# Switch to non-root user
+USER nextjs
+
+# Labels for container metadata
+LABEL maintainer="Daniel Schmidt <daniel@terragon.dev>"
+LABEL version="1.0.0"
+LABEL description="Production-ready XR-Swarm-Bridge webapp with quantum optimization"
+LABEL org.opencontainers.image.source="https://github.com/danieleschmidt/xr-swarm-bridge"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

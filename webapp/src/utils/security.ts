@@ -296,12 +296,12 @@ export class SecurityLogger {
     }
     
     // Log to console in development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env?.DEV) {
       console.warn('Security Event:', fullEvent)
     }
     
     // Send to monitoring service in production
-    if (process.env.NODE_ENV === 'production' && event.severity === 'critical') {
+    if (import.meta.env?.PROD && event.severity === 'critical') {
       this.reportCriticalEvent(fullEvent)
     }
   }

@@ -1,7 +1,6 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 import { useSwarmStore } from '../store/swarmStore'
 import { Text } from '@react-three/drei'
-import * as THREE from 'three'
 
 export default function XRMiniMap() {
   const { agents, selectedAgents } = useSwarmStore()

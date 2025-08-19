@@ -57,7 +57,7 @@ export class GPTIntegration {
   private model: string = 'gpt-4o'
   
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.REACT_APP_OPENAI_API_KEY || ''
+    this.apiKey = apiKey || import.meta.env.VITE_OPENAI_API_KEY || ''
     
     if (!this.apiKey) {
       console.warn('OpenAI API key not configured. GPT-4o features will be disabled.')
