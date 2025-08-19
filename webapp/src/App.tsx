@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { Canvas } from '@react-three/fiber'
 import { VRButton, ARButton, XR } from '@react-three/xr'
@@ -31,7 +31,7 @@ import { useSwarmConnection } from './hooks/useSwarmConnection'
 
 function App() {
   const { isConnected, connectionStatus } = useSwarmStore()
-  const { t, i18n } = useTranslation()
+  const { i18n } = useTranslation()
   
   // Initialize connections
   useWebRTC()

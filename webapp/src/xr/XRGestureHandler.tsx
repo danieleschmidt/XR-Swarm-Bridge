@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import { useXR } from '@react-three/xr'
 import { useFrame } from '@react-three/fiber'
 import { useSwarmStore } from '../store/swarmStore'
@@ -81,7 +81,7 @@ export default function XRGestureHandler() {
     }
   }
 
-  const onGestureEnd = (gestureType: string, position: THREE.Vector3, data: any) => {
+  const onGestureEnd = (gestureType: string, position: THREE.Vector3, _data: any) => {
     console.log(`Gesture ended: ${gestureType} at`, position)
     
     switch (gestureType) {
@@ -117,7 +117,7 @@ export default function XRGestureHandler() {
       case 'point':
         if (data?.direction) {
           // Raycast to find what the user is pointing at
-          const raycaster = new THREE.Raycaster(position, data.direction)
+          // const raycaster = new THREE.Raycaster(position, data.direction) // Not currently used
           // In a real implementation, you'd raycast against scene objects
           useSwarmStore.getState().setTargetDirection(data.direction.toArray())
         }

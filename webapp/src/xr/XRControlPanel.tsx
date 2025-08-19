@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Interactive } from '@react-three/xr'
 import { useSwarmStore } from '../store/swarmStore'
 import { Text } from '@react-three/drei'
 
 export default function XRControlPanel() {
-  const [activeTab, setActiveTab] = useState('command')
+  // const [activeTab, setActiveTab] = useState('command') // Not currently used
   const { selectedAgents, isConnected } = useSwarmStore()
 
   return (

@@ -437,7 +437,7 @@ class ValidationService {
   private sanitizeString(value: string): string {
     return value
       .trim()
-      .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+      .replace(/[\x01-\x1F\x7F]/g, '') // Remove control characters except null
       .replace(/[<>'"&]/g, (match) => { // Basic HTML entity encoding
         const entities: Record<string, string> = {
           '<': '&lt;',
@@ -461,7 +461,7 @@ class ValidationService {
     
     if (typeof obj === 'object' && obj !== null) {
       for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
           if (!this.validateObjectDepth(obj[key], maxDepth, currentDepth + 1)) {
             return false
           }
@@ -512,7 +512,7 @@ class ValidationService {
       
       const sanitized: any = {}
       for (const key in input) {
-        if (input.hasOwnProperty(key)) {
+        if (Object.prototype.hasOwnProperty.call(input, key)) {
           const sanitizedKey = this.sanitizeString(key)
           sanitized[sanitizedKey] = this.sanitizeInput(input[key])
         }

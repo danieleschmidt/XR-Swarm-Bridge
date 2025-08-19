@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useXR, useController, useHitTest, Interactive } from '@react-three/xr'
 import { useFrame } from '@react-three/fiber'
 import { useSwarmStore, useSelectedAgents } from '../store/swarmStore'
@@ -10,20 +10,24 @@ import XRMiniMap from './XRMiniMap'
 import * as THREE from 'three'
 
 export default function XRInterface() {
-  const { isPresenting, player } = useXR()
+  const { isPresenting } = useXR()
   const leftController = useController('left')
   const rightController = useController('right')
-  const { sendGlobalCommand, sendAgentCommand } = useSwarmConnection()
+  const { sendGlobalCommand } = useSwarmConnection()
   const selectedAgents = useSelectedAgents()
   const agents = useSwarmStore(state => state.agents)
   
   // XR-specific UI panels
   const leftPanelRef = useRef<THREE.Group>(null)
-  const rightPanelRef = useRef<THREE.Group>(null)
+  // const rightPanelRef = useRef<THREE.Group>(null) // Not currently used
   const controllerRef = useRef<THREE.Group>(null)
 
   // Hit test for placing waypoints
-  const hitTestResults = useHitTest()
+  const [hitTestResults, setHitTestResults] = useState<THREE.Matrix4[]>([])
+  
+  useHitTest((hitMatrix, _hit) => {
+    setHitTestResults(prev => [...prev.slice(-4), hitMatrix]) // Keep last 5 results
+  })
 
   // Handle controller input for agent selection and commands
   useFrame(() => {
@@ -310,11 +314,16 @@ export default function XRInterface() {
   )
 }
 
-function WaypointPlacer({ hitTestResults }: { hitTestResults: any[] }) {
+function WaypointPlacer({ hitTestResults }: { hitTestResults: THREE.Matrix4[] }) {
   const { sendAgentCommand } = useSwarmConnection()
   const selectedAgents = useSelectedAgents()
 
-  const handleWaypointPlace = (position: THREE.Vector3) => {
+  const handleWaypointPlace = (hitMatrix: THREE.Matrix4) => {
+    const position = new THREE.Vector3()
+    const quaternion = new THREE.Quaternion()
+    const scale = new THREE.Vector3()
+    hitMatrix.decompose(position, quaternion, scale)
+    
     selectedAgents.forEach(agent => {
       sendAgentCommand(agent.id, {
         type: 'navigate',
@@ -325,21 +334,28 @@ function WaypointPlacer({ hitTestResults }: { hitTestResults: any[] }) {
 
   return (
     <group>
-      {hitTestResults.map((result, index) => (
-        <Interactive
-          key={index}
-          onSelect={() => handleWaypointPlace(result.position)}
-        >
-          <mesh position={result.position}>
-            <sphereGeometry args={[0.1]} />
-            <meshBasicMaterial 
-              color="#ffff00" 
-              transparent 
-              opacity={0.7}
-            />
-          </mesh>
-        </Interactive>
-      ))}
+      {hitTestResults.map((hitMatrix, index) => {
+        const position = new THREE.Vector3()
+        const quaternion = new THREE.Quaternion()
+        const scale = new THREE.Vector3()
+        hitMatrix.decompose(position, quaternion, scale)
+        
+        return (
+          <Interactive
+            key={index}
+            onSelect={() => handleWaypointPlace(hitMatrix)}
+          >
+            <mesh position={position}>
+              <sphereGeometry args={[0.1]} />
+              <meshBasicMaterial 
+                color="#ffff00" 
+                transparent 
+                opacity={0.7}
+              />
+            </mesh>
+          </Interactive>
+        )
+      })}
     </group>
   )
 }
