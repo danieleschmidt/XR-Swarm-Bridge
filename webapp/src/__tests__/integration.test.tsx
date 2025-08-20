@@ -1,5 +1,6 @@
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { BrowserRouter } from 'react-router-dom';
 import App from '../App';
 
 // Mock WebRTC and XR dependencies
@@ -47,6 +48,13 @@ vi.mock('../hooks/useSwarmConnection', () => ({
   })
 }));
 
+const AppWrapper = ({ children }: { children?: React.ReactNode }) => (
+  <BrowserRouter>
+    <App />
+    {children}
+  </BrowserRouter>
+);
+
 describe('XR-Swarm-Bridge Integration Tests', () => {
   beforeEach(() => {
     // Reset all mocks before each test
@@ -59,12 +67,12 @@ describe('XR-Swarm-Bridge Integration Tests', () => {
   });
 
   it('should render main application without crashing', () => {
-    render(<App />);
+    render(<AppWrapper />);
     expect(screen.getByTestId('xr-container')).toBeInTheDocument();
   });
 
   it('should initialize with default state', async () => {
-    render(<App />);
+    render(<AppWrapper />);
     
     await waitFor(() => {
       expect(screen.getByTestId('xr-container')).toBeInTheDocument();
@@ -74,7 +82,7 @@ describe('XR-Swarm-Bridge Integration Tests', () => {
   it('should handle XR session management', async () => {
     const mockConnect = vi.fn();
     
-    render(<App />);
+    render(<AppWrapper />);
     
     await act(async () => {
       // Simulate XR session start
@@ -87,7 +95,7 @@ describe('XR-Swarm-Bridge Integration Tests', () => {
   it('should manage swarm connections properly', async () => {
     const mockSendCommand = vi.fn();
     
-    render(<App />);
+    render(<AppWrapper />);
     
     await act(async () => {
       // Simulate swarm command
