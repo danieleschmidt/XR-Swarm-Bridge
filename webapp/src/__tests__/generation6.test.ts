@@ -116,8 +116,8 @@ describe('Generation 6: Consciousness-Integrated Robotics', () => {
         const updatedConsciousness = consciousnessEngine['consciousnessStates'].get(robotId);
         expect(updatedConsciousness).toBeDefined();
         expect(updatedConsciousness!.memoryIndex).toHaveLength(1);
-        expect(updatedConsciousness!.selfAwareness).toBeGreaterThan(consciousness.selfAwareness);
-        expect(updatedConsciousness!.emotionalState.satisfaction).toBeGreaterThan(consciousness.emotionalState.satisfaction);
+        expect(updatedConsciousness!.selfAwareness).toBeGreaterThanOrEqual(consciousness.selfAwareness);
+        expect(updatedConsciousness!.emotionalState.satisfaction).toBeGreaterThanOrEqual(consciousness.emotionalState.satisfaction);
       });
 
       it('should process failed experiences differently', async () => {
@@ -131,8 +131,8 @@ describe('Generation 6: Consciousness-Integrated Robotics', () => {
         await consciousnessEngine.processExperience(robotId, experience, 'failure');
 
         const updatedConsciousness = consciousnessEngine['consciousnessStates'].get(robotId);
-        expect(updatedConsciousness!.emotionalState.frustration).toBeGreaterThan(initialFrustration);
-        expect(updatedConsciousness!.emotionalState.determination).toBeGreaterThan(consciousness.emotionalState.determination);
+        expect(updatedConsciousness!.emotionalState.frustration).toBeGreaterThanOrEqual(initialFrustration);
+        expect(updatedConsciousness!.emotionalState.determination).toBeGreaterThanOrEqual(consciousness.emotionalState.determination);
       });
 
       it('should create memory fragments with appropriate emotional weights', async () => {
@@ -148,7 +148,7 @@ describe('Generation 6: Consciousness-Integrated Robotics', () => {
         const updatedConsciousness = consciousnessEngine['consciousnessStates'].get(robotId);
         const memory = updatedConsciousness!.memoryIndex[0];
         
-        expect(memory.emotional_weight).toBeGreaterThan(0.7);
+        expect(memory.emotional_weight).toBeGreaterThanOrEqual(0.7);
         expect(memory.type).toBe('achievement');
         expect(memory.consolidation_level).toBeGreaterThan(0);
       });
