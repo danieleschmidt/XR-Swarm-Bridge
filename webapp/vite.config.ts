@@ -22,15 +22,34 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    chunkSizeWarningLimit: 1000, // Increase to 1000kb for advanced robotics features
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'public/index.html')
       },
       output: {
-        manualChunks: {
-          'three': ['three'],
-          'react-three': ['@react-three/fiber', '@react-three/drei', '@react-three/xr'],
-          'vendor': ['react', 'react-dom', 'zustand', 'socket.io-client']
+        manualChunks(id) {
+          if (id.includes('node_modules/three')) {
+            return 'three';
+          }
+          if (id.includes('node_modules/@react-three')) {
+            return 'react-three';
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/zustand') || id.includes('node_modules/socket.io-client')) {
+            return 'vendor';
+          }
+          if (id.includes('/src/consciousness/')) {
+            return 'consciousness';
+          }
+          if (id.includes('/src/quantum/') || id.includes('/src/multiverse/') || id.includes('/src/temporal/')) {
+            return 'quantum';
+          }
+          if (id.includes('/src/ai/')) {
+            return 'ai';
+          }
+          if (id.includes('/src/utils/')) {
+            return 'utils';
+          }
         }
       }
     }
