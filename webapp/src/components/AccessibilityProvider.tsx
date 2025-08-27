@@ -92,19 +92,30 @@ export function AccessibilityProvider({ children }: AccessibilityProviderProps) 
   }, [settings])
 
   const detectSystemPreferences = () => {
-    // Detect reduced motion preference
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setSettings(prev => ({ ...prev, reducedMotion: true, reducedAnimations: true }))
-    }
+    try {
+      // Check if window.matchMedia exists and is functional
+      if (typeof window !== 'undefined' && window.matchMedia) {
+        // Detect reduced motion preference
+        const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+        if (reducedMotionQuery && reducedMotionQuery.matches) {
+          setSettings(prev => ({ ...prev, reducedMotion: true, reducedAnimations: true }))
+        }
 
-    // Detect high contrast preference
-    if (window.matchMedia('(prefers-contrast: high)').matches) {
-      setSettings(prev => ({ ...prev, highContrast: true }))
-    }
+        // Detect high contrast preference
+        const highContrastQuery = window.matchMedia('(prefers-contrast: high)')
+        if (highContrastQuery && highContrastQuery.matches) {
+          setSettings(prev => ({ ...prev, highContrast: true }))
+        }
 
-    // Detect color scheme preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.classList.add('dark')
+        // Detect color scheme preference
+        const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+        if (darkModeQuery && darkModeQuery.matches) {
+          document.documentElement.classList.add('dark')
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to detect system preferences:', error)
+      // Fallback to default settings without system detection
     }
   }
 
