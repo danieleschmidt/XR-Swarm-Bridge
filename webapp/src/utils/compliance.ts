@@ -538,6 +538,9 @@ class ComplianceManager {
         consents[consent.sessionId] = consent
         localStorage.setItem('compliance_consents', JSON.stringify(consents))
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        this.logComplianceEvent('persist_error', { error: errorMessage })
+        // Don't throw error to prevent UI disruption
         console.warn('Failed to persist consent:', error)
       }
     }

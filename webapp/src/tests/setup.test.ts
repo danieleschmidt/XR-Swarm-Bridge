@@ -8,6 +8,9 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
+// Import vi for mocking
+import { vi } from 'vitest'
+
 // Mock WebGL context
 global.HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
   fillRect: vi.fn(),
